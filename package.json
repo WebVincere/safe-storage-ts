@@ -1,0 +1,38 @@
+{
+  "name": "@webvincere/safe-storage-ts",
+  "version": "1.0.0",
+  "description": "Zero-dependency, type-safe localStorage wrapper with SSR memory fallback and TTL support.",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build && npm run test"
+  },
+  "keywords": [
+    "localstorage",
+    "typescript",
+    "ssr",
+    "ttl",
+    "storage",
+    "zero-dependencies"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "tsup": "^8.3.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
