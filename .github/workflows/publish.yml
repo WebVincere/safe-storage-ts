@@ -27,5 +27,8 @@ jobs:
       - name: Build Package
         run: npm run build
 
+      - name: Upgrade npm for Trusted Publishing OIDC
+        run: npm install -g npm@latest
+
       - name: Publish to npm
         run: npm publish --access public
