@@ -2,6 +2,15 @@
   "name": "@webvincere/safe-storage-ts",
   "version": "1.0.0",
   "description": "Zero-dependency, type-safe localStorage wrapper with SSR memory fallback and TTL support.",
+  "author": "WebVincere",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/webvincere/safe-storage-ts.git"
+  },
+  "homepage": "https://github.com/webvincere/safe-storage-ts#readme",
+  "bugs": {
+    "url": "https://github.com/webvincere/safe-storage-ts/issues"
+  },
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -28,7 +37,6 @@
     "storage",
     "zero-dependencies"
   ],
-  "author": "",
   "license": "MIT",
   "devDependencies": {
     "tsup": "^8.3.0",
