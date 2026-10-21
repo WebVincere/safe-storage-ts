@@ -6,7 +6,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write # Required for npm Trusted Publishing
+  id-token: write
 
 jobs:
   publish:
@@ -19,7 +19,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
 
       - name: Install Dependencies
         run: npm ci
@@ -33,5 +32,4 @@ jobs:
       - name: Publish to npm
         run: npm publish --access public --provenance
         env:
-          # Explicitly clear NODE_AUTH_TOKEN so npm falls back to OIDC token exchange
           NODE_AUTH_TOKEN: ''
