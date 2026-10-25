@@ -1,7 +1,8 @@
+
 {
   "name": "@webvincere/safe-storage-ts",
   "version": "1.0.1",
-  "description": "Zero-dependency, type-safe localStorage wrapper with SSR memory fallback and TTL support.",
+  "description": "Type-safe localStorage and sessionStorage wrapper for TypeScript with SSR-safe in-memory fallback, TTL expiration, and zero dependencies.",
   "author": "WebVincere",
   "repository": {
     "type": "git",
@@ -30,11 +31,19 @@
     "prepublishOnly": "npm run build && npm run test"
   },
   "keywords": [
-    "localstorage",
+    "localStorage",
+    "sessionStorage",
     "typescript",
+    "type-safe",
+    "browser-storage",
     "ssr",
-    "ttl",
+    "ssr-safe",
+    "server-side-rendering",
     "storage",
+    "ttl",
+    "expiration",
+    "in-memory",
+    "fallback",
     "zero-dependencies"
   ],
   "license": "MIT",

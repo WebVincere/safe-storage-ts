@@ -39,7 +39,7 @@ Writing raw `localStorage` in TypeScript apps usually leads to repetitive boiler
 
 
 ```bash
-npm install safe-storage-ts
+npm install @webvincere/safe-storage-ts
 ```
 
 
@@ -51,7 +51,7 @@ npm install safe-storage-ts
 
 Define your storage schema to enforce type safety across your keys and values:
 ```typescript
-import { createStorage } from 'safe-storage-ts';
+import { createStorage } from '@webvincere/safe-storage-ts';
 
 // 1. Define your data schema
 interface AppSchema {
@@ -155,4 +155,4 @@ Clears all keys belonging to this storage instance's namespace/prefix without wi
 ## 🛡️ License
 
 
-[MIT](https://www.google.com/search?q=LICENSE)
+[MIT](./LICENSE)
