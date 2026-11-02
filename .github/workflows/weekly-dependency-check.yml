@@ -1,0 +1,283 @@
+name: Weekly Dependency Health Report
+
+on:
+    schedule:
+        # Every Friday at 9:00 PM IST (3:30 PM UTC)
+        - cron: "30 15 * * 5"
+
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    dependency-health:
+        name: Dependency Health Report
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout main
+              uses: actions/checkout@v4
+              with:
+                  ref: main
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Check outdated dependencies
+              id: outdated
+              shell: bash
+              run: |
+                  npm outdated --json > outdated.json || true
+
+            - name: Check security vulnerabilities
+              id: audit
+              shell: bash
+              run: |
+                  npm audit --json > audit.json || true
+
+            - name: Generate dependency health report
+              shell: bash
+              env:
+                  GITHUB_REPOSITORY: ${{ github.repository }}
+                  GITHUB_RUN_ID: ${{ github.run_id }}
+                  GITHUB_SHA: ${{ github.sha }}
+              run: |
+                  node <<'NODE'
+                  const fs = require('fs');
+
+                  const outdated = JSON.parse(
+                    fs.readFileSync('outdated.json', 'utf8') || '{}'
+                  );
+
+                  const audit = JSON.parse(
+                    fs.readFileSync('audit.json', 'utf8') || '{}'
+                  );
+
+                  const packageJson = require('./package.json');
+
+                  const prod = packageJson.dependencies || {};
+                  const dev = packageJson.devDependencies || {};
+
+                  const escapeHtml = (value) =>
+                    String(value ?? '-').replace(
+                      /[&<>"']/g,
+                      c => ({
+                        '&': '&amp;',
+                        '<': '&lt;',
+                        '>': '&gt;',
+                        '"': '&quot;',
+                        "'": '&#39;'
+                      })[c]
+                    );
+
+                  const sections = {
+                    Major: [],
+                    Minor: [],
+                    Patch: [],
+                    Other: []
+                  };
+
+                  function classify(current, latest) {
+                    const c = String(current || '').split('.').map(Number);
+                    const l = String(latest || '').split('.').map(Number);
+
+                    if (c.length < 3 || l.length < 3 ||
+                        c.some(Number.isNaN) || l.some(Number.isNaN)) {
+                      return 'Other';
+                    }
+
+                    if (l[0] > c[0]) return 'Major';
+                    if (l[1] > c[1]) return 'Minor';
+                    if (l[2] > c[2]) return 'Patch';
+
+                    return 'Other';
+                  }
+
+                  const allDependencies = { ...prod, ...dev };
+
+                  for (const [name, info] of Object.entries(outdated)) {
+                    const type = classify(info.current, info.latest);
+
+                    sections[type].push({
+                      name,
+                      current: info.current || '-',
+                      wanted: info.wanted || '-',
+                      latest: info.latest || '-',
+                      scope: prod[name] ? 'PROD' : 'DEV'
+                    });
+                  }
+
+                  const vulnerabilities =
+                    audit.metadata?.vulnerabilities || {};
+
+                  const totalVulnerabilities =
+                    ['critical', 'high', 'moderate', 'low', 'info']
+                      .reduce((sum, key) =>
+                        sum + (vulnerabilities[key] || 0), 0);
+
+                  const totalOutdated = Object.keys(outdated).length;
+
+                  const severity = (key) => vulnerabilities[key] || 0;
+
+                  let report = [];
+
+                  report.push('<b>━━━━━━━━━━━━━━━━━━━━</b>');
+                  report.push('<b>📊 SAFE-STORAGE-TS</b>');
+                  report.push('<b>WEEKLY DEPENDENCY HEALTH</b>');
+                  report.push('<b>━━━━━━━━━━━━━━━━━━━━</b>');
+                  report.push('');
+                  report.push('📦 <b>PROJECT OVERVIEW</b>');
+                  report.push(`Production dependencies: ${Object.keys(prod).length}`);
+                  report.push(`Development dependencies: ${Object.keys(dev).length}`);
+                  report.push(`Total dependencies: ${Object.keys(allDependencies).length}`);
+                  report.push(`Outdated packages: ${totalOutdated}`);
+                  report.push('');
+
+                  report.push('🔄 <b>VERSION UPDATES</b>');
+
+                  for (const [type, items] of Object.entries(sections)) {
+                    if (!items.length) continue;
+
+                    const emoji = {
+                      Major: '🔴',
+                      Minor: '🟡',
+                      Patch: '🟢',
+                      Other: '⚪'
+                    }[type];
+
+                    report.push('');
+                    report.push(`${emoji} <b>${type} updates (${items.length})</b>`);
+                    report.push('<pre>');
+                    report.push(
+                      'PACKAGE        CURRENT  WANTED   LATEST   TYPE'
+                    );
+                    report.push(
+                      '------------------------------------------------'
+                    );
+
+                    for (const item of items) {
+                      const row = [
+                        item.name.slice(0, 14).padEnd(15),
+                        item.current.slice(0, 7).padEnd(8),
+                        item.wanted.slice(0, 7).padEnd(9),
+                        item.latest.slice(0, 7).padEnd(8),
+                        item.scope
+                      ].join('');
+
+                      report.push(escapeHtml(row));
+                    }
+
+                    report.push('</pre>');
+                  }
+
+                  if (totalOutdated === 0) {
+                    report.push('✅ All dependencies are up to date!');
+                  }
+
+                  report.push('');
+                  report.push('🛡️ <b>SECURITY AUDIT</b>');
+                  report.push('');
+                  report.push(`🔴 Critical: ${severity('critical')}`);
+                  report.push(`🟠 High: ${severity('high')}`);
+                  report.push(`🟡 Moderate: ${severity('moderate')}`);
+                  report.push(`🔵 Low: ${severity('low')}`);
+                  report.push(`⚪ Info: ${severity('info')}`);
+                  report.push('');
+                  report.push(
+                    totalVulnerabilities === 0
+                      ? '✅ No reported security vulnerabilities.'
+                      : '⚠️ Security vulnerabilities detected. Review npm audit.'
+                  );
+
+                  report.push('');
+                  report.push('📈 <b>HEALTH SUMMARY</b>');
+                  report.push(`Outdated: ${totalOutdated}`);
+                  report.push(`Vulnerabilities: ${totalVulnerabilities}`);
+
+                  const status =
+                    severity('critical') || severity('high')
+                      ? '🔴 ACTION REQUIRED'
+                      : totalVulnerabilities || totalOutdated
+                        ? '🟡 REVIEW RECOMMENDED'
+                        : '🟢 HEALTHY';
+
+                  report.push(`<b>Status: ${status}</b>`);
+
+                  report.push('');
+                  report.push('🔗 <a href="https://github.com/' +
+                    escapeHtml(process.env.GITHUB_REPOSITORY) +
+                    '/actions/runs/' +
+                    process.env.GITHUB_RUN_ID +
+                    '">View GitHub Actions Run</a>');
+
+                  report.push('');
+                  report.push(
+                    `Commit: <code>${escapeHtml(process.env.GITHUB_SHA.slice(0, 7))}</code>`
+                  );
+
+                  fs.writeFileSync(
+                    'telegram-report.txt',
+                    report.join('\n')
+                  );
+
+                  console.log('Dependency health report generated.');
+                  NODE
+
+            - name: Send Telegram report
+              env:
+                  TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+                  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+              shell: bash
+              run: |
+                  python3 <<'PY'
+                  import os
+                  import requests
+
+                  token = os.environ["TELEGRAM_BOT_TOKEN"]
+                  chat_id = os.environ["TELEGRAM_CHAT_ID"]
+
+                  with open("telegram-report.txt", encoding="utf-8") as f:
+                      report = f.read()
+
+                  # Split into safe Telegram message sizes.
+                  chunks = []
+                  current = ""
+
+                  for line in report.splitlines(keepends=True):
+                      if len(current) + len(line) > 3500:
+                          chunks.append(current)
+                          current = ""
+
+                      current += line
+
+                  if current:
+                      chunks.append(current)
+
+                  url = f"https://api.telegram.org/bot{token}/sendMessage"
+
+                  for chunk in chunks:
+                      response = requests.post(
+                          url,
+                          data={
+                              "chat_id": chat_id,
+                              "text": chunk,
+                              "parse_mode": "HTML"
+                          },
+                          timeout=30
+                      )
+                      response.raise_for_status()
+
+                      result = response.json()
+
+                      if not result.get("ok"):
+                          raise RuntimeError(result)
+
+                  print(f"Sent {len(chunks)} Telegram message(s).")
+                  PY
