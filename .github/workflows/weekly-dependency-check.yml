@@ -2,7 +2,7 @@ name: Weekly Dependency Health Report
 
 on:
     schedule:
-        # Every Friday at 9 PM IST
+        # Every Friday at 9 PM IST (3:30 PM UTC)
         - cron: "30 15 * * 5"
     workflow_dispatch:
 
@@ -37,9 +37,11 @@ jobs:
               run: npm ci
 
             - name: Check outdated dependencies
+              shell: bash
               run: npm outdated --json > outdated.json || true
 
             - name: Check security vulnerabilities
+              shell: bash
               run: npm audit --json > audit.json || true
 
             - name: Generate dependency health report
@@ -137,14 +139,12 @@ jobs:
                       scope: getScope(name)
                     };
 
-                    // Current differs from wanted: lockfile remediation.
                     if (current !== wanted) {
                       sections.remediation[
                         classify(current, wanted)
                       ].push(item);
                     }
 
-                    // Wanted differs from latest: upstream release available.
                     if (wanted !== latest) {
                       sections.upstream[
                         classify(wanted, latest)
@@ -158,7 +158,11 @@ jobs:
                   const severity = key => vulnerabilities[key] || 0;
 
                   const totalVulnerabilities = [
-                    'critical', 'high', 'moderate', 'low', 'info'
+                    'critical',
+                    'high',
+                    'moderate',
+                    'low',
+                    'info'
                   ].reduce((sum, key) => sum + severity(key), 0);
 
                   const auditFailed = Boolean(audit.error);
@@ -179,10 +183,11 @@ jobs:
                     Object.keys(optional).length +
                     Object.keys(peer).length;
 
-                  const messages = [];
+                  const report = [];
 
                   function addMessage(lines) {
-                    messages.push(lines.join('\n'));
+                    report.push(...lines);
+                    report.push('');
                   }
 
                   function makeTable(items) {
@@ -210,7 +215,7 @@ jobs:
 
                   function addVersionSection(title, data, emoji) {
                     const hasItems = Object.values(data)
-                      .some(items => items.length);
+                      .some(items => items.length > 0);
 
                     if (!hasItems) {
                       addMessage([
@@ -223,21 +228,15 @@ jobs:
                     for (const [type, items] of Object.entries(data)) {
                       if (!items.length) continue;
 
-                      for (let i = 0; i < items.length; i += 18) {
-                        const batch = items.slice(i, i + 18);
-
-                        addMessage([
-                          `<b>${title}</b>`,
-                          '',
-                          `${emoji[type]} <b>${type} (${items.length})</b>`,
-                          `<i>Showing ${i + 1}-${i + batch.length}</i>`,
-                          ...makeTable(batch)
-                        ]);
-                      }
+                      addMessage([
+                        `<b>${title}</b>`,
+                        '',
+                        `${emoji[type]} <b>${type} (${items.length})</b>`,
+                        ...makeTable(items)
+                      ]);
                     }
                   }
 
-                  // Project overview.
                   addMessage([
                     '<b>━━━━━━━━━━━━━━━━━━━━</b>',
                     '<b>📊 DEVOPS DIGEST</b>',
@@ -253,7 +252,6 @@ jobs:
                     `Outdated packages: ${totalOutdated}`
                   ]);
 
-                  // Lockfile remediation.
                   addVersionSection(
                     '🚨 CURRENT / WANTED MISMATCH',
                     sections.remediation,
@@ -265,7 +263,7 @@ jobs:
                     }
                   );
 
-                  if (totalRemediation) {
+                  if (totalRemediation > 0) {
                     addMessage([
                       '<b>🚨 REMEDIATION REQUIRED</b>',
                       '',
@@ -279,7 +277,6 @@ jobs:
                     ]);
                   }
 
-                  // Upstream releases.
                   addVersionSection(
                     '🌐 NEW UPSTREAM RELEASES',
                     sections.upstream,
@@ -291,7 +288,7 @@ jobs:
                     }
                   );
 
-                  if (totalUpstream) {
+                  if (totalUpstream > 0) {
                     addMessage([
                       '<b>💡 UPSTREAM RECOMMENDATION</b>',
                       '',
@@ -303,7 +300,6 @@ jobs:
                     ]);
                   }
 
-                  // Security audit.
                   const auditLines = [
                     '<b>━━━━━━━━━━━━━━━━━━━━</b>',
                     '<b>🛡️ SECURITY AUDIT</b>',
@@ -321,12 +317,16 @@ jobs:
                     auditLines.push('');
                     auditLines.push('⚠️ <b>SECURITY AUDIT FAILED</b>');
                     auditLines.push(
-                      escapeHtml(audit.error.summary || audit.error.code || 'Check npm audit output.')
+                      escapeHtml(
+                        audit.error.summary ||
+                        audit.error.code ||
+                        'Check npm audit output.'
+                      )
                     );
                     auditLines.push(
                       'Security status is unknown until the audit succeeds.'
                     );
-                  } else if (totalVulnerabilities) {
+                  } else if (totalVulnerabilities > 0) {
                     auditLines.push('');
                     auditLines.push('⚠️ Vulnerabilities detected.');
                     auditLines.push('Run npm audit for advisory details.');
@@ -337,16 +337,21 @@ jobs:
 
                   addMessage(auditLines);
 
-                  // Overall health status.
                   let status;
 
                   if (auditFailed) {
                     status = '⚪ SECURITY AUDIT INCOMPLETE';
-                  } else if (severity('critical') || severity('high')) {
+                  } else if (
+                    severity('critical') || severity('high')
+                  ) {
                     status = '🔴 CRITICAL SECURITY ACTION REQUIRED';
-                  } else if (totalRemediation || severity('moderate')) {
+                  } else if (
+                    totalRemediation || severity('moderate')
+                  ) {
                     status = '🟠 REMEDIATION REQUIRED';
-                  } else if (totalUpstream || totalVulnerabilities) {
+                  } else if (
+                    totalUpstream || totalVulnerabilities
+                  ) {
                     status = '🟡 REVIEW RECOMMENDED';
                   } else {
                     status = '🟢 HEALTHY';
@@ -419,12 +424,15 @@ jobs:
 
                   addMessage(summary);
 
+                  const finalReport = report.join('\n').trim();
+
                   fs.writeFileSync(
-                    'telegram-report.json',
-                    JSON.stringify(messages, null, 2)
+                    'telegram-report.txt',
+                    finalReport
                   );
 
                   console.log('Dependency health report generated.');
+
                   console.log({
                     totalDependencies,
                     totalOutdated,
@@ -432,16 +440,15 @@ jobs:
                     totalUpstream,
                     totalVulnerabilities,
                     auditFailed,
-                    status,
-                    telegramMessages: messages.length
+                    status
                   });
                   NODE
 
             - name: Send Telegram report
+              shell: bash
               env:
                   TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
                   TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-              shell: bash
               run: |
                   node <<'NODE'
                   const fs = require('fs');
@@ -456,122 +463,71 @@ jobs:
                       );
                     }
 
-                    const messages = JSON.parse(
-                      fs.readFileSync('telegram-report.json', 'utf8')
+                    const report = fs.readFileSync(
+                      'telegram-report.txt',
+                      'utf8'
                     );
 
                     const url =
-                      `https://api.telegram.org/bot${token}/sendMessage`;
+                      `https://api.telegram.org/bot${token}/`;
 
-                    for (let i = 0; i < messages.length; i++) {
-                      const text = messages[i];
+                    const reportLength = Array.from(report).length;
 
-                      if (text.length > 4000) {
-                        throw new Error(
-                          `Telegram message ${i + 1} exceeds safe message size.`
-                        );
-                      }
+                    let response;
 
-                      const response = await fetch(url, {
-                        method: 'POST',
-                        headers: {
-                          'Content-Type':
-                            'application/x-www-form-urlencoded'
-                        },
-                        body: new URLSearchParams({
-                          chat_id: chatId,
-                          text,
-                          parse_mode: 'HTML',
-                          disable_web_page_preview: 'true'
-                        })
-                      });
+                    if (reportLength <= 3900) {
+                      response = await fetch(
+                        url + 'sendMessage',
+                        {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json'
+                          },
+                          body: JSON.stringify({
+                            chat_id: chatId,
+                            text: report,
+                            parse_mode: 'HTML',
+                            disable_web_page_preview: true
+                          })
+                        }
+                      );
+                    } else {
+                      const form = new FormData();
 
-                      const result = await response.json();
+                      form.append('chat_id', chatId);
 
-                      if (!response.ok || !result.ok) {
-                        throw new Error(
-                          `Telegram message ${i + 1} failed: ` +
-                          JSON.stringify(result)
-                        );
-                      }
+                      form.append(
+                        'document',
+                        new Blob(
+                          [report],
+                          { type: 'text/html' }
+                        ),
+                        'weekly-dependency-health-report.html'
+                      );
 
-                      console.log(
-                        `Telegram message ${i + 1}/${messages.length} sent.`
+                      response = await fetch(
+                        url + 'sendDocument',
+                        {
+                          method: 'POST',
+                          body: form
+                        }
                       );
                     }
 
-                    console.log('All Telegram reports sent successfully.');
-                  }
+                    const result = await response.json();
 
-                  main().catch(error => {
-                    console.error(error);
-                    process.exit(1);
-                  });
-                  NODE
-            - name: Send Telegram report
-              env:
-                  TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-                  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-              shell: bash
-              run: |
-                  node <<'NODE'
-                  const fs = require('fs');
-
-                  async function main() {
-                    const token = process.env.TELEGRAM_BOT_TOKEN;
-                    const chatId = process.env.TELEGRAM_CHAT_ID;
-
-                    if (!token || !chatId) {
+                    if (!response.ok || !result.ok) {
                       throw new Error(
-                        'Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID.'
+                        'Telegram delivery failed: ' +
+                        JSON.stringify(result)
                       );
                     }
 
-                    const messages = JSON.parse(
-                      fs.readFileSync('telegram-report.json', 'utf8')
+                    console.log(
+                      reportLength <= 3900
+                        ? 'Complete report sent as one Telegram message.'
+                        : 'Complete report sent as one document.'
                     );
-
-                    const url =
-                      `https://api.telegram.org/bot${token}/sendMessage`;
-
-                    for (let i = 0; i < messages.length; i++) {
-                      const text = messages[i];
-
-                      if (text.length > 4000) {
-                        throw new Error(
-                          `Telegram message ${i + 1} exceeds safe message size.`
-                        );
-                      }
-
-                      const response = await fetch(url, {
-                        method: 'POST',
-                        headers: {
-                          'Content-Type':
-                            'application/x-www-form-urlencoded'
-                        },
-                        body: new URLSearchParams({
-                          chat_id: chatId,
-                          text,
-                          parse_mode: 'HTML',
-                          disable_web_page_preview: 'true'
-                        })
-                      });
-
-                      const result = await response.json();
-
-                      if (!response.ok || !result.ok) {
-                        throw new Error(
-                          `Telegram message ${i + 1} failed: ` +
-                          JSON.stringify(result)
-                        );
-                      }
-
-                      console.log(
-                        `Telegram message ${i + 1}/${messages.length} sent.`
-                      );
-                    }
-
-                    console.log('All Telegram reports sent successfully.');
                   }
 
                   main().catch(error => {
